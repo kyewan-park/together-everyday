@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { db } from "./firebase";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
 
 const C = {
   bg: "#F7F4EF",
@@ -228,6 +230,55 @@ export default function App() {
   const me = members.find(m => m.id === myId);
   const isJangnim = myId === 5; // 계완 점장
 
+  // ─────────────────────────────────────
+  // 🔥 Firebase 실시간 동기화
+  // ─────────────────────────────────────
+  const [isLoaded, setIsLoaded] = useState(false);
+  const isFirstLoad = useRef(true);
+
+  // Firebase에서 데이터 읽어오기 (실시간)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "salon", "main"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.members)      setMembers(data.members);
+        if (data.log)          setLog(data.log);
+        if (data.zoneAssign)   setZoneAssign(data.zoneAssign);
+        if (data.zoneDone)     setZoneDone(data.zoneDone);
+        if (data.rotationDate) setRotationDate(data.rotationDate);
+        if (data.thanks)       setThanks(data.thanks);
+        if (data.events)       setEvents(data.events);
+        if (data.birthdays)    setBirthdays(data.birthdays);
+        if (data.moods)        setMoods(data.moods);
+        if (data.orders)       setOrders(data.orders);
+        if (data.suggestions)  setSuggestions(data.suggestions);
+      }
+      setIsLoaded(true);
+      isFirstLoad.current = false;
+    }, (err) => {
+      console.error("Firebase 읽기 오류:", err);
+      setIsLoaded(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // 데이터 변경 시 Firebase에 저장
+  useEffect(() => {
+    if (!isLoaded || isFirstLoad.current) return;
+    const saveData = async () => {
+      try {
+        await setDoc(doc(db, "salon", "main"), {
+          members, log, zoneAssign, zoneDone, rotationDate,
+          thanks, events, birthdays, moods, orders, suggestions,
+          lastUpdate: Date.now(),
+        });
+      } catch (err) {
+        console.error("Firebase 저장 오류:", err);
+      }
+    };
+    saveData();
+  }, [members, log, zoneAssign, zoneDone, rotationDate, thanks, events, birthdays, moods, orders, suggestions, isLoaded]);
+
   useEffect(() => {
     const t = setInterval(() => setCheer(i => (i + 1) % CHEERS.length), 4500);
     return () => clearInterval(t);
@@ -269,6 +320,26 @@ export default function App() {
   const availTasks    = HELP_TASKS.filter(t => !doneTasks.includes(t.id));
 
   const areaGroups = ["시술", "정리", "응대"];
+
+  // 🔥 로딩 화면
+  if (!isLoaded) {
+    return (
+      <div style={{
+        fontFamily: "'Noto Sans KR', sans-serif",
+        background: "linear-gradient(135deg, #3D6B52 0%, #2A4535 100%)",
+        minHeight: "100vh", display: "flex",
+        alignItems: "center", justifyContent: "center",
+        flexDirection: "column", color: "#fff",
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16, animation: "blink 1.5s ease infinite" }}>💛</div>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>함께, 매일</div>
+        <div style={{ fontSize: 12, opacity: .7 }}>데이터 불러오는 중...</div>
+        <style>{`
+          @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.95)} }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{
